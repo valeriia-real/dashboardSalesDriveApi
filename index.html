@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sales Dashboard - Salesdrive</title>
+
+    <!-- Flatpickr CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <!-- MonthSelect Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body class="dark-theme">
+    <header class="main-header">
+      <div class="header-left">
+        <h1 class="header-title">ПРОДАЖІ <span class="header-month">ОСТАННЯ ДОБА</span></h1>
+        <p class="header-subtitle">SALESDRIVE <span class="status-badge">0</span> ЗАМОВЛЕНЬ</p>
+      </div>
+
+      <div class="header-right">
+        <select id="dateRangeSelect">
+          <option value="last_day" selected>Остання доба</option>
+          <option value="last_week">Попередній тиждень</option>
+          <option value="last_7_days">Останні 7 днів</option>
+          <option value="last_14_days">Останні 14 днів</option>
+
+          <!-- Місяць і Рік -->
+          <option value="month">Місяць</option>
+          <option value="year">Рік</option>
+
+          <option value="custom">Вибрати дати...</option>
+        </select>
+
+        <!-- Кастомний вибір дат -->
+        <div id="customDateRange" style="display: none">
+          <input type="text" id="startDate" placeholder="Дата початку" />
+          <input type="text" id="endDate" placeholder="Дата кінця" />
+        </div>
+
+        <!-- Вибір місяця -->
+        <div id="monthPickerContainer" style="display: none">
+          <input type="text" id="monthPicker" placeholder="Оберіть місяць" />
+        </div>
+
+        <!-- Вибір року -->
+        <div id="yearPickerContainer" style="display: none">
+          <select id="yearSelect">
+            <!-- Опції будуть додані динамічно JS -->
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-grid">
+      <section class="metrics-row metrics-group-1">
+        <div class="metric-card neon-yellow">
+          <p class="metric-label">ПОТЕНЦІЙНИЙ ОБОРОТ (ВСІ УГОДИ)</p>
+          <p class="metric-value">6 114 852 ₴</p>
+          <p class="metric-subtext">10 139 замовлень всього</p>
+        </div>
+
+        <div class="metric-card neon-cyan">
+          <p class="metric-label">ВИРУЧКА (ПРОДАЖА)</p>
+          <p class="metric-value">1 731 783 ₴</p>
+          <!-- <p class="metric-subtext">1 876 успішних замовлень</p> -->
+        </div>
+
+        <div class="metric-card neon-teal">
+          <p class="metric-label">СЕРЕДНІЙ ЧЕК</p>
+          <p class="metric-value">2000 ₴</p>
+          <p class="metric-subtext">по успішних замовленнях</p>
+        </div>
+
+        <!-- <div class="metric-card neon-green">
+          <p class="metric-label">КОНВЕРСІЯ</p>
+          <p class="metric-value">87.7%</p>
+          <p class="metric-subtext">1 876 з 2 139 замовлень</p>
+        </div> -->
+      </section>
+
+      <!-- <section class="metrics-row metrics-group-2">
+        <div class="metric-card neon-purple">
+          <p class="metric-label">КОМІСІЇ ПЛАТФОРМ</p>
+          <p class="metric-value">366 221 ₴</p>
+          <p class="metric-subtext">лише з успішних угод</p>
+        </div>
+
+        <div class="metric-card neon-pink">
+          <p class="metric-label">ВИТРАТИ НА ЕКВАЙРИНГ</p>
+          <p class="metric-value">21 882 ₴</p>
+          <p class="metric-subtext">лише з оплачених угод (1 694)</p>
+        </div>
+
+        <div class="metric-card neon-orange">
+          <p class="metric-label">ВИТРАТИ НА ДОСТАВКУ</p>
+          <p class="metric-value">36 968 ₴</p>
+          <p class="metric-subtext">без скасованих до відправки</p>
+        </div>
+      </section>
+
+      <section class="warning-row">
+        <div class="warning-card">
+          <p class="warning-header">
+            182 неоплачені угоди
+            <span class="warning-amount">176 895 ₴</span>
+          </p>
+
+          <p class="warning-text">
+            Угоди зі статусом «Продажа», де сума = залишилось сплатити.
+            Оплата не надійшла — потребують ручної перевірки.
+          </p>
+        </div>
+      </section>
+
+      <section class="charts-section">
+        <div class="charts-left-column">
+          <div class="chart-card income-chart">
+            <h3>ДОХІД ПО ДНЯМ (₴)</h3>
+            <div class="chart-placeholder">
+              <canvas id="incomeCanvas"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card activity-chart">
+            <h3>АКТИВНІСТЬ ПО ГОДИНАХ ДОБИ</h3>
+            <div class="chart-placeholder">
+              <canvas id="activityCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-right-column">
+          <div class="chart-card status-chart">
+            <h3>СТАТУСИ ЗАМОВЛЕНЬ</h3>
+            <div class="chart-placeholder">
+              <canvas id="statusCanvas"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card channels-chart">
+            <h3>КАНАЛИ ПРОДАЖІВ</h3>
+            <div class="chart-placeholder">
+              <canvas id="channelsCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </section> -->
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
