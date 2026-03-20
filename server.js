@@ -1,6 +1,7 @@
 const express = require('express')
 const cors = require('cors')
 const mongoose = require('mongoose')
+const axios = require('axios')
 
 const app = express()
 
@@ -11,7 +12,7 @@ app.use(express.static(__dirname))
 // 🔥 PORT для Render
 const PORT = process.env.PORT || 3000
 
-// 🔐 ENV
+// 🔐 ENV змінні
 const API_KEY = process.env.API_KEY
 const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
@@ -25,17 +26,16 @@ mongoose
   .catch(err => console.log('❌ Mongo error:', err))
 
 // ----------------------
-// Модель (гнучка)
+// Модель
 // ----------------------
 const orderSchema = new mongoose.Schema({}, { strict: false })
 const Order = mongoose.model('Order', orderSchema)
 
 // ----------------------
-// Отримати замовлення з API
+// Fetch orders (axios)
 // ----------------------
-
 let isFetching = false
-const MAX_PAGES = 20 // обмеження щоб не спамити API
+const MAX_PAGES = 20
 
 async function fetchOrders() {
   if (isFetching) return
@@ -49,13 +49,17 @@ async function fetchOrders() {
 
   try {
     while (hasMore && page <= MAX_PAGES) {
+      console.log('➡️ Fetch page:', page)
+
       const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100`
 
-      const res = await fetch(url, {
-        headers: { 'X-Api-Key': API_KEY },
+      const res = await axios.get(url, {
+        headers: {
+          'X-Api-Key': API_KEY,
+        },
       })
 
-      const data = await res.json()
+      const data = res.data
 
       if (data.status === 'error') {
         console.log('❌ API LIMIT:', data.message)
@@ -66,7 +70,7 @@ async function fetchOrders() {
 
       if (!orders.length) break
 
-      // 👉 додаємо тільки ті, яких ще немає в базі
+      // залишаємо тільки нові замовлення
       for (const order of orders) {
         const exists = await Order.findOne({ id: order.id })
 
@@ -77,11 +81,10 @@ async function fetchOrders() {
 
       page++
 
-      // якщо менше 100 — це остання сторінка
       if (orders.length < 100) break
 
-      // 🔥 затримка між запитами
-      await new Promise(res => setTimeout(res, 6000))
+      // затримка щоб не перевищувати ліміт
+      await new Promise(resolve => setTimeout(resolve, 6000))
     }
 
     if (!newOrders.length) {
@@ -89,9 +92,7 @@ async function fetchOrders() {
       return
     }
 
-    // ----------------------
-    // Збереження в MongoDB
-    // ----------------------
+    // збереження
     await Order.insertMany(newOrders, { ordered: false })
 
     const total = await Order.countDocuments()
@@ -106,7 +107,7 @@ async function fetchOrders() {
 }
 
 // ----------------------
-// API
+// API endpoint
 // ----------------------
 app.get('/api/orders', async (req, res) => {
   try {
@@ -123,10 +124,10 @@ app.get('/api/orders', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`)
 
-  // 🔥 перший запуск
+  // перший запуск синхронізації
   await fetchOrders()
 
-  // 🔁 раз на 24 години
+  // запуск раз на 24 години
   setInterval(fetchOrders, 24 * 60 * 60 * 1000)
 
   console.log('🚀 Сервер запущено')
