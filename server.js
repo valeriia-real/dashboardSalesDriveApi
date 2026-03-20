@@ -57,6 +57,7 @@ async function fetchOrders() {
         headers: {
           'X-Api-Key': API_KEY,
         },
+        timeout: 15000, // 15 секунд
       })
 
       const data = res.data
@@ -124,11 +125,25 @@ app.get('/api/orders', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`)
 
-  // перший запуск синхронізації
-  await fetchOrders()
+  await testApi() // 👈 тест
+  await fetchOrders() // основна логіка
 
-  // запуск раз на 24 години
   setInterval(fetchOrders, 24 * 60 * 60 * 1000)
-
-  console.log('🚀 Сервер запущено')
 })
+
+async function testApi() {
+  try {
+    console.log('🧪 Testing API...')
+
+    const res = await axios.get(`https://${DOMAIN}/api/order/list/?page=1&limit=1`, {
+      headers: {
+        'X-Api-Key': API_KEY,
+      },
+      timeout: 15000,
+    })
+
+    console.log('✅ API TEST SUCCESS:', res.data)
+  } catch (err) {
+    console.log('❌ API TEST ERROR:', err.message)
+  }
+}
