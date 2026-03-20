@@ -9,16 +9,16 @@ app.use(cors())
 app.use(express.json())
 app.use(express.static(__dirname))
 
-// 🔥 PORT для Render
+// 🔥 PORT
 const PORT = process.env.PORT || 3000
 
-// 🔐 ENV змінні
+// 🔐 ENV
 const API_KEY = process.env.API_KEY
 const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
 
 // ----------------------
-// MongoDB підключення
+// MongoDB
 // ----------------------
 mongoose
   .connect(MONGO_URL)
@@ -26,39 +26,52 @@ mongoose
   .catch(err => console.log('❌ Mongo error:', err))
 
 // ----------------------
-// Модель
+// Model
 // ----------------------
 const orderSchema = new mongoose.Schema({}, { strict: false })
 const Order = mongoose.model('Order', orderSchema)
 
 // ----------------------
-// Fetch orders (axios)
+// Fetch orders
 // ----------------------
 let isFetching = false
-const MAX_PAGES = 20
+const MAX_PAGES = 10 // обмеження щоб не зависало
 
 async function fetchOrders() {
   if (isFetching) return
   isFetching = true
 
   let page = 1
-  let hasMore = true
   let newOrders = []
 
   console.log('🌐 Завантаження замовлень...')
 
   try {
-    while (hasMore && page <= MAX_PAGES) {
+    while (page <= MAX_PAGES) {
       console.log('➡️ Fetch page:', page)
 
       const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100`
 
-      const res = await axios.get(url, {
-        headers: {
-          'X-Api-Key': API_KEY,
-        },
-        timeout: 15000, // 15 секунд
-      })
+      let res
+
+      try {
+        res = await axios.get(url, {
+          headers: {
+            'X-Api-Key': API_KEY,
+          },
+          timeout: 60000, // 60 секунд
+        })
+      } catch (err) {
+        if (err.response) {
+          console.log('❌ API ERROR STATUS:', err.response.status)
+          console.log('❌ API ERROR DATA:', err.response.data)
+        } else if (err.request) {
+          console.log('❌ NO RESPONSE (timeout or blocked)')
+        } else {
+          console.log('❌ REQUEST ERROR:', err.message)
+        }
+        break
+      }
 
       const data = res.data
 
@@ -71,7 +84,7 @@ async function fetchOrders() {
 
       if (!orders.length) break
 
-      // залишаємо тільки нові замовлення
+      // додаємо тільки нові
       for (const order of orders) {
         const exists = await Order.findOne({ id: order.id })
 
@@ -84,8 +97,8 @@ async function fetchOrders() {
 
       if (orders.length < 100) break
 
-      // затримка щоб не перевищувати ліміт
-      await new Promise(resolve => setTimeout(resolve, 6000))
+      // пауза між запитами
+      await new Promise(resolve => setTimeout(resolve, 5000))
     }
 
     if (!newOrders.length) {
@@ -93,7 +106,6 @@ async function fetchOrders() {
       return
     }
 
-    // збереження
     await Order.insertMany(newOrders, { ordered: false })
 
     const total = await Order.countDocuments()
@@ -101,7 +113,7 @@ async function fetchOrders() {
     console.log(`➕ Додано нових: ${newOrders.length}`)
     console.log(`📦 Всього в базі: ${total}`)
   } catch (err) {
-    console.error('❌ Помилка:', err.message)
+    console.error('❌ GENERAL ERROR:', err.message)
   } finally {
     isFetching = false
   }
@@ -120,30 +132,28 @@ app.get('/api/orders', async (req, res) => {
 })
 
 // ----------------------
-// Старт сервера
+// Server start
 // ----------------------
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`)
 
-  await testApi() // 👈 тест
-  await fetchOrders() // основна логіка
-
-  setInterval(fetchOrders, 24 * 60 * 60 * 1000)
-})
-
-async function testApi() {
+  // тест API
   try {
-    console.log('🧪 Testing API...')
-
-    const res = await axios.get(`https://${DOMAIN}/api/order/list/?page=1&limit=1`, {
-      headers: {
-        'X-Api-Key': API_KEY,
-      },
-      timeout: 15000,
+    const test = await axios.get(`https://${DOMAIN}/api/order/list/?page=1&limit=1`, {
+      headers: { 'X-Api-Key': API_KEY },
+      timeout: 30000,
     })
 
-    console.log('✅ API TEST SUCCESS:', res.data)
+    console.log('🧪 API TEST SUCCESS')
   } catch (err) {
-    console.log('❌ API TEST ERROR:', err.message)
+    console.log('❌ API TEST FAILED:', err.message)
   }
-}
+
+  // запуск синхронізації
+  await fetchOrders()
+
+  // раз на 24 години
+  setInterval(fetchOrders, 24 * 60 * 60 * 1000)
+
+  console.log('🚀 Server started fully')
+})
