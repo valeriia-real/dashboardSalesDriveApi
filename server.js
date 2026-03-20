@@ -131,7 +131,7 @@ async function fetchOrdersByYear(year) {
 }
 
 app.listen(PORT, async () => {
-  cconsole.log(`🚀 Server running on port ${PORT}`)
+  console.log(`🚀 Server running on port ${PORT}`)
 
   loadOrdersFromFile()
 
