@@ -3,6 +3,9 @@ const cors = require('cors')
 const mongoose = require('mongoose')
 const axios = require('axios')
 
+const path = require('path')
+
+app.use(express.static(path.join(__dirname)))
 const app = express()
 
 app.use(cors())
@@ -17,13 +20,21 @@ const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
 
 // =====================
-// DB
+// DB CONNECT (ВАЖЛИВО через await)
 // =====================
-mongoose
-  .connect(MONGO_URL)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.log('❌ Mongo error:', err))
+async function connectDB() {
+  try {
+    await mongoose.connect(MONGO_URL)
+    console.log('✅ MongoDB connected')
+  } catch (err) {
+    console.error('❌ Mongo connection error:', err.message)
+    process.exit(1) // зупиняє сервер якщо база не працює
+  }
+}
 
+// =====================
+// MODEL
+// =====================
 const orderSchema = new mongoose.Schema({}, { strict: false })
 const Order = mongoose.model('Order', orderSchema)
 
@@ -34,7 +45,7 @@ let isFetching = false
 let lastOrderId = null
 
 // =====================
-// FETCH ORDERS (OPTIMIZED)
+// FETCH ORDERS (1 запит, без перевищення ліміту)
 // =====================
 async function fetchOrders() {
   if (isFetching) return
@@ -59,17 +70,16 @@ async function fetchOrders() {
       return
     }
 
-    // 🔍 Фільтруємо нові замовлення
+    // 🔍 тільки нові
     const newOrders = orders.filter(order => {
       if (!lastOrderId) return true
       return order.id > lastOrderId
     })
 
-    // 🔄 Оновлюємо lastOrderId
-    const maxId = Math.max(...orders.map(o => o.id))
-    lastOrderId = maxId
+    // 🔄 оновлюємо останній ID
+    lastOrderId = Math.max(...orders.map(o => o.id))
 
-    // 💾 Зберігаємо нові
+    // 💾 зберігаємо
     if (newOrders.length > 0) {
       await Order.insertMany(newOrders, { ordered: false })
       console.log(`➕ Added new orders: ${newOrders.length}`)
@@ -84,7 +94,7 @@ async function fetchOrders() {
       console.log('❌ API STATUS:', err.response.status)
       console.log('❌ API DATA:', err.response.data)
     } else if (err.request) {
-      console.log('❌ No response from API (timeout or blocked)')
+      console.log('❌ No response from API')
     } else {
       console.log('❌ Error:', err.message)
     }
@@ -96,38 +106,41 @@ async function fetchOrders() {
 // =====================
 // ROUTES
 // =====================
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'))
+})
+
 app.get('/api/orders', async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ error: 'DB not connected' })
+    }
+
     const data = await Order.find().sort({ _id: -1 })
     res.json(data)
   } catch (err) {
-    console.error('❌ /api/orders error:', err) // 👈 лог в консоль
-    res.status(500).json({ error: err.message }) // 👈 показує реальну помилку
+    console.error('❌ /api/orders error:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
+
 // =====================
-// START SERVER
+// START SERVER (правильний порядок)
 // =====================
-app.listen(PORT, async () => {
-  console.log(`🚀 Server running on port ${PORT}`)
+async function startServer() {
+  await connectDB() // 🔥 спочатку база
 
-  // тест API
-  try {
-    const test = await axios.get(`https://${DOMAIN}/api/order/list/?page=1&limit=1`, {
-      headers: { 'X-Api-Key': API_KEY },
-      timeout: 30000,
-    })
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`)
+  })
 
-    console.log('🧪 API TEST SUCCESS')
-  } catch (err) {
-    console.log('❌ API TEST FAILED:', err.message)
-  }
-
-  // перший запуск
+  // 🔥 БЕЗ тестового API (економимо ліміт)
   await fetchOrders()
 
-  // періодичне оновлення (раз на годину)
-  setInterval(fetchOrders, 60 * 60 * 1000)
+  // 🔁 раз на 3 години
+  setInterval(fetchOrders, 3 * 60 * 60 * 1000)
 
   console.log('🚀 Server fully started')
-})
+}
+
+startServer()
