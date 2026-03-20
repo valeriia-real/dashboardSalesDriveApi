@@ -1,158 +1,125 @@
 const express = require('express')
 const cors = require('cors')
-const fs = require('fs')
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args))
+const mongoose = require('mongoose')
 
 const app = express()
+
 app.use(cors())
 app.use(express.json())
 app.use(express.static(__dirname))
 
+// 🔥 PORT для Render
 const PORT = process.env.PORT || 3000
 
-const API_KEY = '5tHfsz0l5Gz4xY2WfHTF-f47D6JNmlak_EGTJKJivmeGBF-aiXqtjY5JD3PwrT0eNhEIzWK2aKv3u4-qwFs3Og9x7N68lkkOqFvm'
+// 🔐 ENV
+const API_KEY = process.env.API_KEY
+const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
 
-const FILE_PATH = './orders.json'
+// ----------------------
+// MongoDB підключення
+// ----------------------
+mongoose
+  .connect(MONGO_URL)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.log('❌ Mongo error:', err))
 
-let orders = []
+// ----------------------
+// Модель (гнучка)
+// ----------------------
+const orderSchema = new mongoose.Schema({}, { strict: false })
+const Order = mongoose.model('Order', orderSchema)
 
-/* ---------------------- */
-/* Читання з файлу */
-/* ---------------------- */
-function loadOrdersFromFile() {
-  if (fs.existsSync(FILE_PATH)) {
-    const data = fs.readFileSync(FILE_PATH)
-    orders = JSON.parse(data)
-    console.log(`📂 Завантажено з файлу: ${orders.length} замовлень`)
-  } else {
-    console.log('⚠️ Файл не знайдено, буде створений')
-  }
-}
-
-/* ---------------------- */
-/* Запис у файл */
-/* ---------------------- */
-function saveOrdersToFile() {
-  fs.writeFileSync(FILE_PATH, JSON.stringify(orders, null, 2))
-  console.log('💾 Дані збережено у файл')
-}
-
-/* ---------------------- */
-/* Завантаження з CRM */
-/* ---------------------- */
+// ----------------------
+// Отримати замовлення з API
+// ----------------------
 async function fetchOrders() {
-  let currentPage = 1
-  let hasMorePages = true
+  let page = 1
+  let hasMore = true
   let newOrders = []
-  const now = new Date()
-  const last30 = new Date()
-  last30.setDate(now.getDate() - 30)
 
-  const MAX_PAGES = 10 // не впираємось в ліміт
-
-  console.log('🌐 Завантаження з CRM...')
+  console.log('🌐 Завантаження нових замовлень...')
 
   try {
-    const delay = ms => new Promise(res => setTimeout(res, ms))
-    while (hasMorePages) {
-      const url = `https://${DOMAIN}/api/order/list/?page=${currentPage}&limit=100`
+    while (hasMore) {
+      const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100`
 
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         headers: { 'X-Api-Key': API_KEY },
       })
 
-      const data = await response.json()
+      const data = await res.json()
 
       if (data.status === 'error') {
         console.log('❌ API LIMIT:', data.message)
         break
       }
 
-      const pageOrders = data.data || []
+      const orders = data.data || []
 
-      if (pageOrders.length === 0) break
+      if (!orders.length) break
 
-      newOrders.push(...pageOrders)
+      newOrders.push(...orders)
 
-      currentPage++
+      page++
 
-      await delay(7000) // 👈 критично
+      // 🔥 затримка щоб не впертись в ліміт
+      await new Promise(res => setTimeout(res, 6000))
 
-      if (pageOrders.length < 100) break
+      if (orders.length < 100) break
     }
 
-    // 👉 уникаємо дублікатів
-    const existingIds = new Set(orders.map(o => o.id))
-    const filtered = newOrders.filter(o => !existingIds.has(o.id))
+    // ❗ якщо нічого нового
+    if (!newOrders.length) {
+      console.log('📭 Нема нових замовлень')
+      return
+    }
 
-    orders = [...filtered, ...orders]
+    // ----------------------
+    // Збереження в MongoDB
+    // ----------------------
+    let added = 0
 
-    console.log(`➕ Додано нових: ${filtered.length}`)
-    console.log(`📦 Всього: ${orders.length}`)
+    for (const order of newOrders) {
+      const result = await Order.updateOne({ id: order.id }, order, { upsert: true })
 
-    saveOrdersToFile()
+      if (result.upsertedCount > 0) {
+        added++
+      }
+    }
+
+    const total = await Order.countDocuments()
+
+    console.log(`➕ Додано нових: ${added}`)
+    console.log(`📦 Всього в базі: ${total}`)
   } catch (err) {
     console.error('❌ Помилка:', err.message)
   }
 }
 
-/* ---------------------- */
-/* API */
-/* ---------------------- */
-app.get('/api/orders', (req, res) => {
-  res.json(orders)
+// ----------------------
+// API
+// ----------------------
+app.get('/api/orders', async (req, res) => {
+  try {
+    const data = await Order.find().sort({ _id: -1 })
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' })
+  }
 })
 
-async function fetchOrdersByYear(year) {
-  let page = 1
-  let all = []
-
-  while (true) {
-    const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100&year=${year}`
-
-    const res = await fetch(url, {
-      headers: { 'X-Api-Key': API_KEY },
-    })
-
-    const data = await res.json()
-    const pageOrders = data.data || []
-
-    if (!pageOrders.length) break
-
-    all.push(...pageOrders)
-
-    page++
-
-    await new Promise(res => setTimeout(res, 6000))
-  }
-
-  return all
-}
-
+// ----------------------
+// Старт сервера
+// ----------------------
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`)
 
-  loadOrdersFromFile()
-
-  if (orders.length === 0) {
-    console.log('📦 Первинне завантаження...')
-
-    const years = [2024, 2025, 2026]
-    let all = []
-
-    for (const year of years) {
-      const data = await fetchOrdersByYear(year)
-      all.push(...data)
-    }
-
-    orders = all
-    saveOrdersToFile()
-  }
-
+  // 🔥 перший запуск
   await fetchOrders()
 
+  // 🔁 раз на 24 години
   setInterval(fetchOrders, 24 * 60 * 60 * 1000)
 
-  console.log(`🚀 Сервер запущено`)
+  console.log('🚀 Сервер запущено')
 })
