@@ -17,7 +17,7 @@ const EXCLUDED_STATUSES = [6, 7]
 /* ---------------------- */
 async function loadOrders() {
   try {
-    const response = await fetch('http://localhost:3000/api/orders')
+    const response = await fetch('https://dashboardsalesdriveapi.onrender.com/')
     orders = await response.json()
 
     if (orders.length > 0) {

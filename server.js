@@ -33,15 +33,22 @@ const Order = mongoose.model('Order', orderSchema)
 // ----------------------
 // Отримати замовлення з API
 // ----------------------
+
+let isFetching = false
+const MAX_PAGES = 20 // обмеження щоб не спамити API
+
 async function fetchOrders() {
+  if (isFetching) return
+  isFetching = true
+
   let page = 1
   let hasMore = true
   let newOrders = []
 
-  console.log('🌐 Завантаження нових замовлень...')
+  console.log('🌐 Завантаження замовлень...')
 
   try {
-    while (hasMore) {
+    while (hasMore && page <= MAX_PAGES) {
       const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100`
 
       const res = await fetch(url, {
@@ -59,41 +66,42 @@ async function fetchOrders() {
 
       if (!orders.length) break
 
-      newOrders.push(...orders)
+      // 👉 додаємо тільки ті, яких ще немає в базі
+      for (const order of orders) {
+        const exists = await Order.findOne({ id: order.id })
+
+        if (!exists) {
+          newOrders.push(order)
+        }
+      }
 
       page++
 
-      // 🔥 затримка щоб не впертись в ліміт
-      await new Promise(res => setTimeout(res, 6000))
-
+      // якщо менше 100 — це остання сторінка
       if (orders.length < 100) break
+
+      // 🔥 затримка між запитами
+      await new Promise(res => setTimeout(res, 6000))
     }
 
-    // ❗ якщо нічого нового
     if (!newOrders.length) {
-      console.log('📭 Нема нових замовлень')
+      console.log('📭 Нових замовлень немає')
       return
     }
 
     // ----------------------
     // Збереження в MongoDB
     // ----------------------
-    let added = 0
-
-    for (const order of newOrders) {
-      const result = await Order.updateOne({ id: order.id }, order, { upsert: true })
-
-      if (result.upsertedCount > 0) {
-        added++
-      }
-    }
+    await Order.insertMany(newOrders, { ordered: false })
 
     const total = await Order.countDocuments()
 
-    console.log(`➕ Додано нових: ${added}`)
+    console.log(`➕ Додано нових: ${newOrders.length}`)
     console.log(`📦 Всього в базі: ${total}`)
   } catch (err) {
     console.error('❌ Помилка:', err.message)
+  } finally {
+    isFetching = false
   }
 }
 
