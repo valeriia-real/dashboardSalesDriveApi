@@ -7,133 +7,107 @@ const app = express()
 
 app.use(cors())
 app.use(express.json())
-app.use(express.static(__dirname))
 
-// 🔥 PORT
+// =====================
+// ENV
+// =====================
 const PORT = process.env.PORT || 3000
-
-// 🔐 ENV
 const API_KEY = process.env.API_KEY
 const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
 
-// ----------------------
-// MongoDB
-// ----------------------
+// =====================
+// DB
+// =====================
 mongoose
   .connect(MONGO_URL)
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.log('❌ Mongo error:', err))
 
-// ----------------------
-// Model
-// ----------------------
 const orderSchema = new mongoose.Schema({}, { strict: false })
 const Order = mongoose.model('Order', orderSchema)
 
-// ----------------------
-// Fetch orders
-// ----------------------
+// =====================
+// STATE
+// =====================
 let isFetching = false
-const MAX_PAGES = 10 // обмеження щоб не зависало
+let lastOrderId = null
 
+// =====================
+// FETCH ORDERS (OPTIMIZED)
+// =====================
 async function fetchOrders() {
   if (isFetching) return
   isFetching = true
 
-  let page = 1
-  let newOrders = []
-
-  console.log('🌐 Завантаження замовлень...')
-
   try {
-    while (page <= MAX_PAGES) {
-      console.log('➡️ Fetch page:', page)
+    console.log('🌐 Fetching orders...')
 
-      const url = `https://${DOMAIN}/api/order/list/?page=${page}&limit=100`
+    const url = `https://${DOMAIN}/api/order/list/?page=1&limit=100`
 
-      let res
+    const res = await axios.get(url, {
+      headers: {
+        'X-Api-Key': API_KEY,
+      },
+      timeout: 60000,
+    })
 
-      try {
-        res = await axios.get(url, {
-          headers: {
-            'X-Api-Key': API_KEY,
-          },
-          timeout: 60000, // 60 секунд
-        })
-      } catch (err) {
-        if (err.response) {
-          console.log('❌ API ERROR STATUS:', err.response.status)
-          console.log('❌ API ERROR DATA:', err.response.data)
-        } else if (err.request) {
-          console.log('❌ NO RESPONSE (timeout or blocked)')
-        } else {
-          console.log('❌ REQUEST ERROR:', err.message)
-        }
-        break
-      }
+    const orders = res.data?.data || []
 
-      const data = res.data
-
-      if (data.status === 'error') {
-        console.log('❌ API LIMIT:', data.message)
-        break
-      }
-
-      const orders = data.data || []
-
-      if (!orders.length) break
-
-      // додаємо тільки нові
-      for (const order of orders) {
-        const exists = await Order.findOne({ id: order.id })
-
-        if (!exists) {
-          newOrders.push(order)
-        }
-      }
-
-      page++
-
-      if (orders.length < 100) break
-
-      // пауза між запитами
-      await new Promise(resolve => setTimeout(resolve, 5000))
-    }
-
-    if (!newOrders.length) {
-      console.log('📭 Нових замовлень немає')
+    if (!orders.length) {
+      console.log('📭 No orders received')
       return
     }
 
-    await Order.insertMany(newOrders, { ordered: false })
+    // 🔍 Фільтруємо нові замовлення
+    const newOrders = orders.filter(order => {
+      if (!lastOrderId) return true
+      return order.id > lastOrderId
+    })
+
+    // 🔄 Оновлюємо lastOrderId
+    const maxId = Math.max(...orders.map(o => o.id))
+    lastOrderId = maxId
+
+    // 💾 Зберігаємо нові
+    if (newOrders.length > 0) {
+      await Order.insertMany(newOrders, { ordered: false })
+      console.log(`➕ Added new orders: ${newOrders.length}`)
+    } else {
+      console.log('📭 No new orders')
+    }
 
     const total = await Order.countDocuments()
-
-    console.log(`➕ Додано нових: ${newOrders.length}`)
-    console.log(`📦 Всього в базі: ${total}`)
+    console.log(`📦 Total in DB: ${total}`)
   } catch (err) {
-    console.error('❌ GENERAL ERROR:', err.message)
+    if (err.response) {
+      console.log('❌ API STATUS:', err.response.status)
+      console.log('❌ API DATA:', err.response.data)
+    } else if (err.request) {
+      console.log('❌ No response from API (timeout or blocked)')
+    } else {
+      console.log('❌ Error:', err.message)
+    }
   } finally {
     isFetching = false
   }
 }
 
-// ----------------------
-// API endpoint
-// ----------------------
+// =====================
+// ROUTES
+// =====================
 app.get('/api/orders', async (req, res) => {
   try {
     const data = await Order.find().sort({ _id: -1 })
     res.json(data)
   } catch (err) {
-    res.status(500).json({ error: 'Server error' })
+    console.error('❌ /api/orders error:', err) // 👈 лог в консоль
+    res.status(500).json({ error: err.message }) // 👈 показує реальну помилку
   }
 })
-
-// ----------------------
-// Server start
-// ----------------------
+// =====================
+// START SERVER
+// =====================
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`)
 
@@ -149,11 +123,11 @@ app.listen(PORT, async () => {
     console.log('❌ API TEST FAILED:', err.message)
   }
 
-  // запуск синхронізації
+  // перший запуск
   await fetchOrders()
 
-  // раз на 24 години
-  setInterval(fetchOrders, 24 * 60 * 60 * 1000)
+  // періодичне оновлення (раз на годину)
+  setInterval(fetchOrders, 60 * 60 * 1000)
 
-  console.log('🚀 Server started fully')
+  console.log('🚀 Server fully started')
 })
