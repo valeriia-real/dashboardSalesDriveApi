@@ -182,7 +182,7 @@ async function startServer() {
   })
 
   // 🔥 ВКЛЮЧИТИ 1 РАЗ (ПОТІМ ВИДАЛИТИ!)
-  await importOrders2026()
+  // await importOrders2026()
 
   // 🔄 регулярне оновлення
   setInterval(fetchOrders, 3 * 60 * 60 * 1000)

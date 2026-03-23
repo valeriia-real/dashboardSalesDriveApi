@@ -10,7 +10,8 @@ const yearSelect = document.getElementById('yearSelect')
 const ordersCountHeader = document.querySelector('.status-badge')
 
 let orders = []
-const EXCLUDED_STATUSES = [6, 7]
+
+const EXCLUDED_STATUSES = [6, 7] // Скасовано, Повернення
 
 /* ---------------------- */
 /* Завантаження замовлень */
@@ -29,6 +30,14 @@ async function loadOrders() {
 }
 
 /* ---------------------- */
+/* Парсер дати */
+/* ---------------------- */
+function parseDate(dateString) {
+  const [day, month, year] = dateString.split('.')
+  return new Date(year, month - 1, day)
+}
+
+/* ---------------------- */
 /* Фільтр періодів */
 /* ---------------------- */
 function filterOrdersByRange(range) {
@@ -42,27 +51,28 @@ function filterOrdersByRange(range) {
       start.setHours(0, 0, 0, 0)
       title = 'ОСТАННЯ ДОБА'
       break
+
     case 'last_week':
       start.setDate(now.getDate() - now.getDay() - 6)
       end.setDate(now.getDate() - now.getDay())
       title = 'ПОПЕРЕДНІЙ ТИЖДЕНЬ'
       break
+
     case 'last_7_days':
       start.setDate(now.getDate() - 7)
       title = 'ОСТАННІ 7 ДНІВ'
       break
+
     case 'last_14_days':
       start.setDate(now.getDate() - 14)
       title = 'ОСТАННІ 14 ДНІВ'
       break
+
     case 'custom':
       const startVal = startDateInput.value
       const endVal = endDateInput.value
 
-      if (!startVal && !endVal) {
-        // ❌ нічого не робимо — залишаємо старий заголовок
-        return []
-      }
+      if (!startVal && !endVal) return []
 
       if (startVal && !endVal) {
         start = parseDate(startVal)
@@ -99,7 +109,7 @@ function updateDashboard(range) {
   const filtered = filterOrdersByRange(range)
 
   updateMetrics(filtered)
-  updateHeaderOrders(filtered) // <-- додаємо сюди
+  updateHeaderOrders(filtered)
 }
 
 function updateHeaderOrders(filteredOrders) {
@@ -110,19 +120,14 @@ function updateHeaderOrders(filteredOrders) {
 /* Метрики */
 /* ---------------------- */
 function updateMetrics(filtered) {
-  const validOrders = filtered.filter(order => !EXCLUDED_STATUSES.includes(order.status))
+  // ❗ виключаємо статуси
+  const validOrders = filtered.filter(order => !EXCLUDED_STATUSES.includes(order.statusId))
 
   const count = validOrders.length
 
   // оборот
   const turnover = validOrders.reduce((sum, order) => {
-    if (order.products && Array.isArray(order.products)) {
-      const orderTotal = order.products.reduce((s, product) => {
-        return s + (Number(product.price) || 0) * (Number(product.amount) || 0)
-      }, 0)
-      return sum + orderTotal
-    }
-    return sum
+    return sum + (Number(order.paymentAmount) || 0)
   }, 0)
 
   // середній чек
@@ -142,29 +147,25 @@ function updateMetrics(filtered) {
 
   document.querySelector('.neon-cyan .metric-value').textContent = profit.toLocaleString('uk-UA') + ' ₴'
 }
+
 /* ---------------------- */
 /* Select логіка */
 /* ---------------------- */
 dateRangeSelect.addEventListener('change', e => {
   const value = e.target.value
 
-  // 👉 1. Спочатку очищаємо ВСЕ
   clearAllPickers()
 
-  // 👉 2. Ховаємо всі блоки
   customDateRange.style.display = 'none'
   monthPickerContainer.style.display = 'none'
   yearPickerContainer.style.display = 'none'
 
-  // 👉 3. Показуємо потрібний
   if (value === 'custom') {
     customDateRange.style.display = 'block'
   }
 
   if (value === 'month') {
     monthPickerContainer.style.display = 'block'
-
-    // відкриваємо календар місяців
     setTimeout(() => {
       monthPickerInput._flatpickr.open()
     }, 0)
@@ -174,21 +175,17 @@ dateRangeSelect.addEventListener('change', e => {
     yearPickerContainer.style.display = 'block'
   }
 
-  // 👉 4. Оновлюємо дашборд для стандартних
   if (['last_day', 'last_week', 'last_7_days', 'last_14_days'].includes(value)) {
     updateDashboard(value)
   }
 })
 
 /* ---------------------- */
-/* Flatpickr дати */
+/* Flatpickr */
 /* ---------------------- */
 flatpickr(startDateInput, { dateFormat: 'd.m.Y' })
 flatpickr(endDateInput, { dateFormat: 'd.m.Y' })
 
-/* ---------------------- */
-/* Flatpickr Місяць */
-/* ---------------------- */
 flatpickr(monthPickerInput, {
   plugins: [
     new monthSelectPlugin({
@@ -199,35 +196,34 @@ flatpickr(monthPickerInput, {
   ],
   onChange: function (selectedDates) {
     if (!selectedDates.length) return
+
     const date = selectedDates[0]
     const start = new Date(date.getFullYear(), date.getMonth(), 1)
     const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
     end.setHours(23, 59, 59)
 
-    // Форматуємо назву місяця + рік без "р." і великими літерами
     const monthName = date.toLocaleString('uk-UA', { month: 'long' }).toUpperCase()
     const year = date.getFullYear()
+
     headerMonth.textContent = `${monthName} ${year}`
 
     updateDashboardCustom(start, end)
   },
 })
-/* ---------------------- */
-/*  Рік */
-/* ---------------------- */
+
 yearSelect.addEventListener('change', () => {
   const year = parseInt(yearSelect.value)
   const start = new Date(year, 0, 1)
   const end = new Date(year, 11, 31)
   end.setHours(23, 59, 59)
 
-  headerMonth.textContent = year.toString() // відображаємо рік у заголовку
+  headerMonth.textContent = year.toString()
   updateDashboardCustom(start, end)
 })
+
 function populateYearSelect(startYear = 2020, endYear = new Date().getFullYear()) {
-  yearSelect.innerHTML = '' // очищаємо перед додаванням
+  yearSelect.innerHTML = ''
   for (let y = endYear; y >= startYear; y--) {
-    // від нового до старого
     const option = document.createElement('option')
     option.value = y
     option.textContent = y
@@ -238,7 +234,7 @@ function populateYearSelect(startYear = 2020, endYear = new Date().getFullYear()
 populateYearSelect()
 
 /* ---------------------- */
-/* Custom dashboard для місяця/року/гнучкого вибору */
+/* Custom dashboard */
 /* ---------------------- */
 function updateDashboardCustom(start, end) {
   const filtered = orders.filter(order => {
@@ -247,37 +243,31 @@ function updateDashboardCustom(start, end) {
   })
 
   updateMetrics(filtered)
-  updateHeaderOrders(filtered) // <-- і тут
-}
-/* ---------------------- */
-/* Парсер дати з формату d.m.Y */
-/* ---------------------- */
-function parseDate(dateString) {
-  const [day, month, year] = dateString.split('.')
-  return new Date(year, month - 1, day)
+  updateHeaderOrders(filtered)
 }
 
 /* ---------------------- */
-/* Слухачі для custom дат */
+/* Custom date inputs */
 /* ---------------------- */
 ;[startDateInput, endDateInput].forEach(input => {
   input.addEventListener('change', () => {
-    updateDashboard('custom') // завжди оновлюємо дашборд, навіть якщо обрана лише одна дата
+    updateDashboard('custom')
   })
 })
+
 function clearAllPickers() {
-  // очищаємо текстові інпути
   startDateInput.value = ''
   endDateInput.value = ''
   monthPickerInput.value = ''
 
-  // очищаємо flatpickr (важливо!)
   if (startDateInput._flatpickr) startDateInput._flatpickr.clear()
   if (endDateInput._flatpickr) endDateInput._flatpickr.clear()
   if (monthPickerInput._flatpickr) monthPickerInput._flatpickr.clear()
 
-  // очищаємо select року
   yearSelect.selectedIndex = -1
 }
 
+/* ---------------------- */
+/* Init */
+/* ---------------------- */
 loadOrders()
