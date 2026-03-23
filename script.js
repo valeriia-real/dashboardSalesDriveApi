@@ -30,21 +30,19 @@ async function loadOrders() {
 }
 
 /* ---------------------- */
-/* ЄДИНИЙ ФІЛЬТР СТАТУСІВ */
-/* ---------------------- */
-function getValidOrders(filtered) {
-  return filtered.filter(order => {
-    const status = Number(order.statusId)
-    return status && !EXCLUDED_STATUSES.includes(status)
-  })
-}
-
-/* ---------------------- */
 /* Парсер дати */
 /* ---------------------- */
 function parseDate(dateString) {
   const [day, month, year] = dateString.split('.')
   return new Date(year, month - 1, day)
+}
+
+/* ---------------------- */
+/* 🔥 ФОРМАТ ТІЛЬКИ ДАТИ */
+/* ---------------------- */
+function formatDateOnly(date) {
+  const d = new Date(date)
+  return d.toISOString().split('T')[0]
 }
 
 /* ---------------------- */
@@ -58,7 +56,6 @@ function filterOrdersByRange(range) {
 
   switch (range) {
     case 'last_day':
-      start.setHours(0, 0, 0, 0)
       title = 'ОСТАННЯ ДОБА'
       break
 
@@ -86,18 +83,15 @@ function filterOrdersByRange(range) {
 
       if (startVal && !endVal) {
         start = parseDate(startVal)
-        end = new Date(start)
-        end.setHours(23, 59, 59)
+        end = start
         title = startVal
       } else if (!startVal && endVal) {
-        end = parseDate(endVal)
-        start = new Date(end)
-        start.setHours(0, 0, 0, 0)
+        start = parseDate(endVal)
+        end = start
         title = endVal
       } else {
         start = parseDate(startVal)
         end = parseDate(endVal)
-        end.setHours(23, 59, 59)
         title = `${startVal} — ${endVal}`
       }
 
@@ -106,12 +100,15 @@ function filterOrdersByRange(range) {
 
   headerMonth.textContent = title
 
+  const startStr = formatDateOnly(start)
+  const endStr = formatDateOnly(end)
+
   return orders.filter(order => {
     if (!order.orderTime) return false
 
-    const orderDate = new Date(order.orderTime)
+    const orderStr = formatDateOnly(order.orderTime)
 
-    return orderDate >= start && orderDate <= end
+    return orderStr >= startStr && orderStr <= endStr
   })
 }
 
@@ -120,23 +117,23 @@ function filterOrdersByRange(range) {
 /* ---------------------- */
 function updateDashboard(range) {
   const filtered = filterOrdersByRange(range)
-  const validOrders = getValidOrders(filtered)
 
-  updateMetrics(validOrders)
-  updateHeaderOrders(validOrders)
+  updateMetrics(filtered)
+  updateHeaderOrders(filtered)
 }
 
-/* ---------------------- */
-/* Кількість замовлень */
-/* ---------------------- */
-function updateHeaderOrders(validOrders) {
+function updateHeaderOrders(filteredOrders) {
+  const validOrders = filteredOrders.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
+
   ordersCountHeader.textContent = validOrders.length.toLocaleString('uk-UA')
 }
 
 /* ---------------------- */
 /* Метрики */
 /* ---------------------- */
-function updateMetrics(validOrders) {
+function updateMetrics(filtered) {
+  const validOrders = filtered.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
+
   const count = validOrders.length
 
   const turnover = validOrders.reduce((sum, order) => {
@@ -207,7 +204,6 @@ flatpickr(monthPickerInput, {
     const date = selectedDates[0]
     const start = new Date(date.getFullYear(), date.getMonth(), 1)
     const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-    end.setHours(23, 59, 59)
 
     const monthName = date.toLocaleString('uk-UA', { month: 'long' }).toUpperCase()
     const year = date.getFullYear()
@@ -222,7 +218,6 @@ yearSelect.addEventListener('change', () => {
   const year = parseInt(yearSelect.value)
   const start = new Date(year, 0, 1)
   const end = new Date(year, 11, 31)
-  end.setHours(23, 59, 59)
 
   headerMonth.textContent = year.toString()
   updateDashboardCustom(start, end)
@@ -244,17 +239,19 @@ populateYearSelect()
 /* Custom dashboard */
 /* ---------------------- */
 function updateDashboardCustom(start, end) {
+  const startStr = formatDateOnly(start)
+  const endStr = formatDateOnly(end)
+
   const filtered = orders.filter(order => {
     if (!order.orderTime) return false
 
-    const orderDate = new Date(order.orderTime)
-    return orderDate >= start && orderDate <= end
+    const orderStr = formatDateOnly(order.orderTime)
+
+    return orderStr >= startStr && orderStr <= endStr
   })
 
-  const validOrders = getValidOrders(filtered)
-
-  updateMetrics(validOrders)
-  updateHeaderOrders(validOrders)
+  updateMetrics(filtered)
+  updateHeaderOrders(filtered)
 }
 
 /* ---------------------- */
