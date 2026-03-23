@@ -11,7 +11,7 @@ const ordersCountHeader = document.querySelector('.status-badge')
 
 let orders = []
 
-const EXCLUDED_STATUSES = [6, 7, 77] // Скасовано, Повернення, Самозакуп
+const EXCLUDED_STATUSES = [6, 7, 77]
 
 /* ---------------------- */
 /* Завантаження замовлень */
@@ -27,6 +27,16 @@ async function loadOrders() {
   } catch (error) {
     console.error(error)
   }
+}
+
+/* ---------------------- */
+/* ЄДИНИЙ ФІЛЬТР СТАТУСІВ */
+/* ---------------------- */
+function getValidOrders(filtered) {
+  return filtered.filter(order => {
+    const status = Number(order.statusId)
+    return status && !EXCLUDED_STATUSES.includes(status)
+  })
 }
 
 /* ---------------------- */
@@ -97,15 +107,11 @@ function filterOrdersByRange(range) {
   headerMonth.textContent = title
 
   return orders.filter(order => {
+    if (!order.orderTime) return false
+
     const orderDate = new Date(order.orderTime)
-    orderDate.setHours(orderDate.getHours() + 2)
 
-    if (orderDate >= start && orderDate <= end) {
-      console.log('ПОПАЛО:', order.id, order.orderTime)
-      return true
-    }
-
-    return false
+    return orderDate >= start && orderDate <= end
   })
 }
 
@@ -114,37 +120,31 @@ function filterOrdersByRange(range) {
 /* ---------------------- */
 function updateDashboard(range) {
   const filtered = filterOrdersByRange(range)
+  const validOrders = getValidOrders(filtered)
 
-  console.log('ВСЬОГО після фільтра:', filtered.length)
-
-  updateMetrics(filtered)
-  updateHeaderOrders(filtered)
+  updateMetrics(validOrders)
+  updateHeaderOrders(validOrders)
 }
 
-function updateHeaderOrders(filteredOrders) {
-  const validOrders = filteredOrders.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
-
+/* ---------------------- */
+/* Кількість замовлень */
+/* ---------------------- */
+function updateHeaderOrders(validOrders) {
   ordersCountHeader.textContent = validOrders.length.toLocaleString('uk-UA')
 }
 
 /* ---------------------- */
 /* Метрики */
 /* ---------------------- */
-function updateMetrics(filtered) {
-  // ❗ виключаємо статуси
-  const validOrders = filtered.filter(order => !EXCLUDED_STATUSES.includes(order.statusId))
-
+function updateMetrics(validOrders) {
   const count = validOrders.length
 
-  // оборот
   const turnover = validOrders.reduce((sum, order) => {
     return sum + (Number(order.paymentAmount) || 0)
   }, 0)
 
-  // середній чек
   const avgCheck = count > 0 ? turnover / count : 0
 
-  // прибуток
   const profit = validOrders.reduce((sum, order) => {
     return sum + (Number(order.profitAmount) || 0)
   }, 0)
@@ -171,15 +171,11 @@ dateRangeSelect.addEventListener('change', e => {
   monthPickerContainer.style.display = 'none'
   yearPickerContainer.style.display = 'none'
 
-  if (value === 'custom') {
-    customDateRange.style.display = 'block'
-  }
+  if (value === 'custom') customDateRange.style.display = 'block'
 
   if (value === 'month') {
     monthPickerContainer.style.display = 'block'
-    setTimeout(() => {
-      monthPickerInput._flatpickr.open()
-    }, 0)
+    setTimeout(() => monthPickerInput._flatpickr.open(), 0)
   }
 
   if (value === 'year') {
@@ -249,15 +245,16 @@ populateYearSelect()
 /* ---------------------- */
 function updateDashboardCustom(start, end) {
   const filtered = orders.filter(order => {
-    const orderDate = new Date(order.orderTime)
+    if (!order.orderTime) return false
 
-    // 🔥 фікс таймзони України
-    orderDate.setHours(orderDate.getHours() + 2)
+    const orderDate = new Date(order.orderTime)
     return orderDate >= start && orderDate <= end
   })
 
-  updateMetrics(filtered)
-  updateHeaderOrders(filtered)
+  const validOrders = getValidOrders(filtered)
+
+  updateMetrics(validOrders)
+  updateHeaderOrders(validOrders)
 }
 
 /* ---------------------- */
@@ -282,6 +279,6 @@ function clearAllPickers() {
 }
 
 /* ---------------------- */
-/* Init */
+/* INIT */
 /* ---------------------- */
 loadOrders()
