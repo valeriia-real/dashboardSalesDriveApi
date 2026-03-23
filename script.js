@@ -113,7 +113,9 @@ function updateDashboard(range) {
 }
 
 function updateHeaderOrders(filteredOrders) {
-  ordersCountHeader.textContent = filteredOrders.length.toLocaleString('uk-UA')
+  const validOrders = filteredOrders.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
+
+  ordersCountHeader.textContent = validOrders.length.toLocaleString('uk-UA')
 }
 
 /* ---------------------- */
