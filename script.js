@@ -98,6 +98,9 @@ function filterOrdersByRange(range) {
 
   return orders.filter(order => {
     const orderDate = new Date(order.orderTime)
+
+    // 🔥 фікс таймзони України
+    orderDate.setHours(orderDate.getHours() + 2)
     return orderDate >= start && orderDate <= end
   })
 }
@@ -241,6 +244,9 @@ populateYearSelect()
 function updateDashboardCustom(start, end) {
   const filtered = orders.filter(order => {
     const orderDate = new Date(order.orderTime)
+
+    // 🔥 фікс таймзони України
+    orderDate.setHours(orderDate.getHours() + 2)
     return orderDate >= start && orderDate <= end
   })
 
