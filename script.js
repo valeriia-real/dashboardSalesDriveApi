@@ -98,10 +98,14 @@ function filterOrdersByRange(range) {
 
   return orders.filter(order => {
     const orderDate = new Date(order.orderTime)
-
-    // 🔥 фікс таймзони України
     orderDate.setHours(orderDate.getHours() + 2)
-    return orderDate >= start && orderDate <= end
+
+    if (orderDate >= start && orderDate <= end) {
+      console.log('ПОПАЛО:', order.id, order.orderTime)
+      return true
+    }
+
+    return false
   })
 }
 
@@ -110,6 +114,8 @@ function filterOrdersByRange(range) {
 /* ---------------------- */
 function updateDashboard(range) {
   const filtered = filterOrdersByRange(range)
+
+  console.log('ВСЬОГО після фільтра:', filtered.length)
 
   updateMetrics(filtered)
   updateHeaderOrders(filtered)

@@ -2,19 +2,19 @@ const fs = require('fs')
 const csv = require('csv-parser')
 
 const STATUS_MAP = {
-  1: 'Новий',
-  2: 'Очікуємо оплату',
-  3: 'Підтверджено',
-  4: 'В дорозі',
-  5: 'Отримано',
-  6: 'Скасовано',
-  7: 'Повернення',
-  17: 'Прибула у відділення',
-  18: 'Створено для відправки',
-  19: 'Недодзвонились',
-  31: 'Змінено адресу',
-  56: 'Viber',
-  77: 'Самозакуп',
+  Новий: 1,
+  Підтверджено: 3,
+  'Очікуємо оплату': 2,
+  Недодзвонились: 19,
+  Viber: 56,
+  'Створено для відправки': 18,
+  'В дорозі': 4,
+  'Прибула у відділення': 17,
+  'Змінено адресу': 31,
+  Отримано: 5,
+  Скасовано: 6,
+  Повернення: 7,
+  Самозакуп: 77,
 }
 
 const results = []
@@ -26,28 +26,32 @@ function parseNumber(value) {
 
 function parseDate(value) {
   if (!value) return null
+
+  // замінюємо ВСІ види пробілів на звичайний
+  value = value.replace(/\s+/g, ' ').trim()
+
   const [date, time] = value.split(' ')
-  const [y, m, d] = date.split('.')
-  return new Date(`${y}-${m}-${d}T${time}Z`)
+  if (!date || !time) return null
+
+  const [year, month, day] = date.split('.')
+
+  return new Date(`${year}-${month}-${day}T${time}.000Z`)
 }
 
 fs.createReadStream('orders.csv')
   .pipe(
     csv({
       separator: ';',
-      mapHeaders: ({ header }) => header.trim(), // 🔥 ключове виправлення
+      mapHeaders: ({ header }) => header.trim(),
     }),
   )
   .on('data', row => {
-    const id = row['Номер заявки'] ? Number(row['Номер заявки']) : null
-
-    const rawStatus = row['Статус']
-    const statusId = Number(rawStatus) || null
+    const rawStatus = (row['Статус'] || '').trim()
 
     const order = {
-      id: id,
+      id: row['Номер заявки'] ? Number(row['Номер заявки']) : null,
       orderTime: parseDate(row['Дата створення']),
-      statusId: statusId,
+      statusId: STATUS_MAP[rawStatus] ?? null,
       paymentAmount: parseNumber(row['Сума']),
       profitAmount: parseNumber(row['Прибуток']),
     }
@@ -56,5 +60,5 @@ fs.createReadStream('orders.csv')
   })
   .on('end', () => {
     fs.writeFileSync('orders.json', JSON.stringify(results, null, 2))
-    console.log('✅ Done')
+    console.log('✅ Done. Orders:', results.length)
   })
