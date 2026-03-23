@@ -44,7 +44,6 @@ const Order = mongoose.model('Order', orderSchema)
 // STATE
 // =====================
 let isFetching = false
-let lastOrderId = null
 
 // =====================
 // 🔥 ІМПОРТ ЗА 2026 РІК
@@ -180,9 +179,6 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`)
   })
-
-  // 🔥 ВКЛЮЧИТИ 1 РАЗ (ПОТІМ ВИДАЛИТИ!)
-  // await importOrders2026()
 
   // 🔄 регулярне оновлення
   setInterval(fetchOrders, 3 * 60 * 60 * 1000)

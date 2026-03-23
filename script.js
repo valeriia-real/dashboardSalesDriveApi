@@ -11,7 +11,7 @@ const ordersCountHeader = document.querySelector('.status-badge')
 
 let orders = []
 
-const EXCLUDED_STATUSES = [6, 7] // Скасовано, Повернення
+const EXCLUDED_STATUSES = [6, 7, 77] // Скасовано, Повернення, Самозакуп
 
 /* ---------------------- */
 /* Завантаження замовлень */
