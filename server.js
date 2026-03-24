@@ -81,7 +81,7 @@ async function refreshCache() {
 // MODEL
 // =====================
 const orderSchema = new mongoose.Schema({}, { strict: false })
-const Order = mongoose.model('Order', orderSchema)
+const Order = mongoose.models.Order || mongoose.model('Order', orderSchema)
 
 // =====================
 // STATE
