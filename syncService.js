@@ -91,7 +91,7 @@ async function fetchOrders(from, to) {
 
     return res.data?.data || []
   } catch (err) {
-    log('❌ API ERROR: ' + (err.response?.data || err.message))
+    console.log('❌ API ERROR:', JSON.stringify(err.response?.data, null, 2) || err.message)
     return null
   }
 }
