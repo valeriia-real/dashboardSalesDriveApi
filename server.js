@@ -3,8 +3,13 @@ const cors = require('cors')
 const mongoose = require('mongoose')
 const axios = require('axios')
 const path = require('path')
+const { syncNewOrders } = require('./syncService')
 
 const app = express()
+
+let ordersCache = []
+let metricsCache = {}
+let lastCacheUpdate = null
 
 // =====================
 // MIDDLEWARE
@@ -31,6 +36,44 @@ async function connectDB() {
   } catch (err) {
     console.error('❌ Mongo connection error:', err.message)
     process.exit(1)
+  }
+}
+
+async function refreshCache() {
+  try {
+    console.log('🔄 Refreshing cache...')
+
+    ordersCache = await Order.find().lean()
+
+    // 🔥 рахуємо метрики один раз
+    const EXCLUDED_STATUSES = [6, 7, 77]
+
+    const validOrders = ordersCache.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
+
+    const count = validOrders.length
+
+    const turnover = validOrders.reduce((sum, order) => {
+      return sum + (Number(order.paymentAmount) || 0)
+    }, 0)
+
+    const profit = validOrders.reduce((sum, order) => {
+      return sum + (Number(order.profitAmount) || 0)
+    }, 0)
+
+    const avgCheck = count > 0 ? turnover / count : 0
+
+    metricsCache = {
+      count,
+      turnover,
+      profit,
+      avgCheck,
+    }
+
+    lastCacheUpdate = new Date()
+
+    console.log('✅ Cache updated')
+  } catch (err) {
+    console.error('❌ Cache error:', err.message)
   }
 }
 
@@ -152,22 +195,42 @@ async function fetchOrders() {
 // =====================
 // ROUTES
 // =====================
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'))
-})
-
 app.get('/api/orders', async (req, res) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(500).json({ error: 'DB not connected' })
+    const { from, to } = req.query
+
+    let filtered = ordersCache
+
+    if (from && to) {
+      const fromDate = new Date(from)
+      const toDate = new Date(to)
+
+      fromDate.setHours(0, 0, 0, 0)
+      toDate.setHours(23, 59, 59, 999)
+
+      filtered = ordersCache.filter(order => {
+        if (!order.orderTime) return false
+
+        const date = new Date(order.orderTime)
+        return date >= fromDate && date <= toDate
+      })
     }
 
-    const data = await Order.find().sort({ _id: -1 })
-    res.json(data)
+    res.json(filtered)
   } catch (err) {
-    console.error('❌ /api/orders:', err.message)
+    console.error(err)
     res.status(500).json({ error: err.message })
   }
+})
+app.get('/api/sync', async (req, res) => {
+  syncNewOrders()
+  res.json({ status: 'Sync started' })
+})
+app.get('/api/metrics', (req, res) => {
+  res.json({
+    ...metricsCache,
+    updatedAt: lastCacheUpdate,
+  })
 })
 
 // =====================
@@ -176,12 +239,22 @@ app.get('/api/orders', async (req, res) => {
 async function startServer() {
   await connectDB()
 
+  await refreshCache()
+
+  // оновлюємо кеш кожні 10 хв
+  setInterval(refreshCache, 10 * 60 * 1000)
+
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`)
   })
 
   // 🔄 регулярне оновлення
-  setInterval(fetchOrders, 3 * 60 * 60 * 1000)
+  setInterval(
+    () => {
+      syncNewOrders()
+    },
+    60 * 60 * 1000,
+  ) // раз на годину
 
   console.log('🚀 Server fully started')
 }

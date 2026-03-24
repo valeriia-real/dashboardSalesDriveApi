@@ -18,12 +18,10 @@ const EXCLUDED_STATUSES = [6, 7, 77]
 /* ---------------------- */
 async function loadOrders() {
   try {
-    const response = await fetch('https://dashboardsalesdriveapi.onrender.com/api/orders')
+    const response = await fetch('/api/orders')
     orders = await response.json()
 
-    if (orders.length > 0) {
-      updateDashboard('last_day')
-    }
+    updateDashboard('last_day')
   } catch (error) {
     console.error(error)
   }
@@ -47,76 +45,21 @@ function formatDateOnly(date) {
 
 /* ---------------------- */
 /* Фільтр періодів */
+/* ---------------------- *
+
 /* ---------------------- */
-function filterOrdersByRange(range) {
-  const now = new Date()
-  let start = new Date()
-  let end = new Date()
-  let title = ''
-
-  switch (range) {
-    case 'last_day':
-      title = 'ОСТАННЯ ДОБА'
-      break
-
-    case 'last_week':
-      start.setDate(now.getDate() - now.getDay() - 6)
-      end.setDate(now.getDate() - now.getDay())
-      title = 'ПОПЕРЕДНІЙ ТИЖДЕНЬ'
-      break
-
-    case 'last_7_days':
-      start.setDate(now.getDate() - 7)
-      title = 'ОСТАННІ 7 ДНІВ'
-      break
-
-    case 'last_14_days':
-      start.setDate(now.getDate() - 14)
-      title = 'ОСТАННІ 14 ДНІВ'
-      break
-
-    case 'custom':
-      const startVal = startDateInput.value
-      const endVal = endDateInput.value
-
-      if (!startVal && !endVal) return []
-
-      if (startVal && !endVal) {
-        start = parseDate(startVal)
-        end = start
-        title = startVal
-      } else if (!startVal && endVal) {
-        start = parseDate(endVal)
-        end = start
-        title = endVal
-      } else {
-        start = parseDate(startVal)
-        end = parseDate(endVal)
-        title = `${startVal} — ${endVal}`
-      }
-
-      break
-  }
+/* Оновлення дашборду */
+/* ---------------------- */
+async function updateDashboard(range) {
+  const { start, end, title } = getDateRange(range)
 
   headerMonth.textContent = title
 
   const startStr = formatDateOnly(start)
   const endStr = formatDateOnly(end)
 
-  return orders.filter(order => {
-    if (!order.orderTime) return false
-
-    const orderStr = formatDateOnly(order.orderTime)
-
-    return orderStr >= startStr && orderStr <= endStr
-  })
-}
-
-/* ---------------------- */
-/* Оновлення дашборду */
-/* ---------------------- */
-function updateDashboard(range) {
-  const filtered = filterOrdersByRange(range)
+  const response = await fetch(`/api/orders?from=${startStr}&to=${endStr}`)
+  const filtered = await response.json()
 
   updateMetrics(filtered)
   updateHeaderOrders(filtered)
@@ -146,14 +89,18 @@ function updateMetrics(filtered) {
     return sum + (Number(order.profitAmount) || 0)
   }, 0)
 
-  document.querySelector('.neon-yellow .metric-value').textContent = turnover.toLocaleString('uk-UA') + ' ₴'
+  // 🔥 ОБОРОТ (тепер правильно)
+  document.querySelector('.neon-cyan .metric-value').textContent = turnover.toLocaleString('uk-UA') + ' ₴'
 
+  // 🔥 КІЛЬКІСТЬ
   document.querySelector('.neon-yellow .metric-subtext').textContent = `${count} замовлень`
 
+  // 🔥 СЕРЕДНІЙ ЧЕК
   document.querySelector('.neon-teal .metric-value').textContent =
     avgCheck.toLocaleString('uk-UA', { maximumFractionDigits: 0 }) + ' ₴'
 
-  document.querySelector('.neon-cyan .metric-value').textContent = profit.toLocaleString('uk-UA') + ' ₴'
+  // 🔥 ПРИБУТОК
+  document.querySelector('.neon-yellow .metric-value').textContent = profit.toLocaleString('uk-UA') + ' ₴'
 }
 
 /* ---------------------- */
@@ -245,9 +192,9 @@ function updateDashboardCustom(start, end) {
   const filtered = orders.filter(order => {
     if (!order.orderTime) return false
 
-    const orderStr = formatDateOnly(order.orderTime)
+    const orderDate = new Date(order.orderTime)
 
-    return orderStr >= startStr && orderStr <= endStr
+    return orderDate >= start && orderDate <= end
   })
 
   updateMetrics(filtered)
@@ -273,6 +220,72 @@ function clearAllPickers() {
   if (monthPickerInput._flatpickr) monthPickerInput._flatpickr.clear()
 
   yearSelect.selectedIndex = -1
+}
+function formatDisplayDate(date) {
+  return new Date(date).toLocaleDateString('uk-UA')
+}
+function getDateRange(range) {
+  const now = new Date()
+  let start = new Date()
+  let end = new Date()
+  let title = ''
+
+  switch (range) {
+    case 'last_day':
+      start = new Date()
+      start.setHours(0, 0, 0, 0)
+
+      end = new Date()
+      end.setHours(23, 59, 59, 999)
+
+      title = 'СЬОГОДНІ'
+      break
+
+    case 'last_7_days':
+      start = new Date(now)
+      start.setDate(now.getDate() - 7)
+
+      end = now
+      title = 'ОСТАННІ 7 ДНІВ'
+      break
+
+    case 'last_14_days':
+      start = new Date(now)
+      start.setDate(now.getDate() - 14)
+
+      end = now
+      title = 'ОСТАННІ 14 ДНІВ'
+      break
+
+    case 'last_week': {
+      const day = now.getDay()
+
+      const lastSunday = new Date(now)
+      lastSunday.setDate(now.getDate() - day)
+
+      const lastMonday = new Date(lastSunday)
+      lastMonday.setDate(lastSunday.getDate() - 6)
+
+      start = lastMonday
+      end = lastSunday
+
+      title = 'ПОПЕРЕДНІЙ ТИЖДЕНЬ'
+      break
+    }
+
+    case 'custom': {
+      const startVal = startDateInput.value
+      const endVal = endDateInput.value
+
+      start = parseDate(startVal)
+      end = parseDate(endVal)
+
+      title = `${formatDisplayDate(start)} — ${formatDisplayDate(end)}`
+      break
+    }
+  }
+
+  return { start, end, title }
 }
 
 /* ---------------------- */
