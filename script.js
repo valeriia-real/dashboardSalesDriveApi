@@ -11,6 +11,7 @@ const ordersCountHeader = document.querySelector('.status-badge')
 
 let orders = []
 
+const API_BASE = 'https://dashboardsalesdriveapi.onrender.com/api'
 const EXCLUDED_STATUSES = [6, 7, 77]
 
 /* ---------------------- */
@@ -18,7 +19,7 @@ const EXCLUDED_STATUSES = [6, 7, 77]
 /* ---------------------- */
 async function loadOrders() {
   try {
-    const response = await fetch('https://dashboardsalesdriveapi.onrender.com/api/orders')
+    const response = await fetch(`${API_BASE}/orders`)
     orders = await response.json()
 
     updateDashboard('last_day')
@@ -31,21 +32,22 @@ async function loadOrders() {
 /* Парсер дати */
 /* ---------------------- */
 function parseDate(dateString) {
+  if (!dateString) return null
   const [day, month, year] = dateString.split('.')
-  return new Date(year, month - 1, day)
+  const d = new Date(year, month - 1, day)
+  if (isNaN(d.getTime())) return null
+  return d
 }
 
 /* ---------------------- */
-/* 🔥 ФОРМАТ ТІЛЬКИ ДАТИ */
+/* Формат дати */
 /* ---------------------- */
 function formatDateOnly(date) {
+  if (!date) return null
   const d = new Date(date)
+  if (isNaN(d.getTime())) return null
   return d.toISOString().split('T')[0]
 }
-
-/* ---------------------- */
-/* Фільтр періодів */
-/* ---------------------- *
 
 /* ---------------------- */
 /* Оновлення дашборду */
@@ -58,13 +60,18 @@ async function updateDashboard(range) {
   const startStr = formatDateOnly(start)
   const endStr = formatDateOnly(end)
 
-  const response = await fetch(`/api/orders?from=${startStr}&to=${endStr}`)
+  if (!startStr || !endStr) return
+
+  const response = await fetch(`${API_BASE}/orders?from=${startStr}&to=${endStr}`)
   const filtered = await response.json()
 
   updateMetrics(filtered)
   updateHeaderOrders(filtered)
 }
 
+/* ---------------------- */
+/* Header orders */
+/* ---------------------- */
 function updateHeaderOrders(filteredOrders) {
   const validOrders = filteredOrders.filter(order => !EXCLUDED_STATUSES.includes(Number(order.statusId)))
 
@@ -83,23 +90,19 @@ function updateMetrics(filtered) {
     return sum + (Number(order.paymentAmount) || 0)
   }, 0)
 
-  const avgCheck = count > 0 ? turnover / count : 0
-
   const profit = validOrders.reduce((sum, order) => {
     return sum + (Number(order.profitAmount) || 0)
   }, 0)
 
-  // 🔥 ОБОРОТ (тепер правильно)
+  const avgCheck = count > 0 ? turnover / count : 0
+
   document.querySelector('.neon-cyan .metric-value').textContent = turnover.toLocaleString('uk-UA') + ' ₴'
 
-  // 🔥 КІЛЬКІСТЬ
   document.querySelector('.neon-yellow .metric-subtext').textContent = `${count} замовлень`
 
-  // 🔥 СЕРЕДНІЙ ЧЕК
   document.querySelector('.neon-teal .metric-value').textContent =
     avgCheck.toLocaleString('uk-UA', { maximumFractionDigits: 0 }) + ' ₴'
 
-  // 🔥 ПРИБУТОК
   document.querySelector('.neon-yellow .metric-value').textContent = profit.toLocaleString('uk-UA') + ' ₴'
 }
 
@@ -186,14 +189,10 @@ populateYearSelect()
 /* Custom dashboard */
 /* ---------------------- */
 function updateDashboardCustom(start, end) {
-  const startStr = formatDateOnly(start)
-  const endStr = formatDateOnly(end)
-
   const filtered = orders.filter(order => {
     if (!order.orderTime) return false
 
     const orderDate = new Date(order.orderTime)
-
     return orderDate >= start && orderDate <= end
   })
 
@@ -202,7 +201,7 @@ function updateDashboardCustom(start, end) {
 }
 
 /* ---------------------- */
-/* Custom date inputs */
+/* Inputs */
 /* ---------------------- */
 ;[startDateInput, endDateInput].forEach(input => {
   input.addEventListener('change', () => {
@@ -221,9 +220,14 @@ function clearAllPickers() {
 
   yearSelect.selectedIndex = -1
 }
+
+/* ---------------------- */
+/* Date ranges */
+/* ---------------------- */
 function formatDisplayDate(date) {
   return new Date(date).toLocaleDateString('uk-UA')
 }
+
 function getDateRange(range) {
   const now = new Date()
   let start = new Date()
@@ -244,7 +248,6 @@ function getDateRange(range) {
     case 'last_7_days':
       start = new Date(now)
       start.setDate(now.getDate() - 7)
-
       end = now
       title = 'ОСТАННІ 7 ДНІВ'
       break
@@ -252,7 +255,6 @@ function getDateRange(range) {
     case 'last_14_days':
       start = new Date(now)
       start.setDate(now.getDate() - 14)
-
       end = now
       title = 'ОСТАННІ 14 ДНІВ'
       break
@@ -279,6 +281,8 @@ function getDateRange(range) {
 
       start = parseDate(startVal)
       end = parseDate(endVal)
+
+      if (!start || !end) return { start: null, end: null, title: '' }
 
       title = `${formatDisplayDate(start)} — ${formatDisplayDate(end)}`
       break
