@@ -83,113 +83,32 @@ async function refreshCache() {
 const orderSchema = new mongoose.Schema({}, { strict: false })
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema)
 
-// =====================
-// STATE
-// =====================
-let isFetching = false
+async function startServer() {
+  await connectDB()
 
-// =====================
-// 🔥 ІМПОРТ ЗА 2026 РІК
-// =====================
-async function importOrders2026() {
-  if (isFetching) return
-  isFetching = true
+  await refreshCache()
 
-  try {
-    console.log('📅 Importing orders for 2026...')
+  // 🔥 sync тільки після DB
+  await syncNewOrders()
+  await refreshCache()
 
-    let currentDate = new Date('2026-01-01')
-    const endDate = new Date('2026-12-31')
+  // оновлюємо кеш кожні 10 хв
+  setInterval(refreshCache, 10 * 60 * 1000)
 
-    while (currentDate <= endDate) {
-      const nextDate = new Date(currentDate)
-      nextDate.setDate(nextDate.getDate() + 1)
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`)
+  })
 
-      const from = currentDate.toISOString().slice(0, 10)
-      const to = nextDate.toISOString().slice(0, 10)
+  // 🔄 регулярний sync
+  setInterval(
+    async () => {
+      await syncNewOrders()
+      await refreshCache()
+    },
+    60 * 60 * 1000,
+  )
 
-      console.log(`➡️ ${from} - ${to}`)
-
-      try {
-        const res = await axios.get(`https://${DOMAIN}/api/order/list/`, {
-          headers: { 'X-Api-Key': API_KEY },
-          params: {
-            'filter[orderTime][from]': from,
-            'filter[orderTime][to]': to,
-            limit: 100,
-          },
-          timeout: 60000,
-        })
-
-        const orders = res.data?.data || []
-
-        if (orders.length > 0) {
-          for (const order of orders) {
-            await Order.updateOne({ id: order.id }, order, { upsert: true })
-          }
-
-          console.log(`✅ Saved: ${orders.length}`)
-        } else {
-          console.log('📭 No orders')
-        }
-
-        // ⏳ затримка (щоб не перевищити ліміт)
-        await new Promise(r => setTimeout(r, 2000))
-      } catch (err) {
-        console.log('❌ ERROR:', err.response?.data || err.message)
-
-        if (err.response?.data?.message?.includes('limit')) {
-          console.log('⛔ API LIMIT — stop import')
-          break
-        }
-      }
-
-      currentDate = nextDate
-    }
-
-    console.log('✅ Import finished')
-  } finally {
-    isFetching = false
-  }
-}
-
-// =====================
-// ОНОВЛЕННЯ НОВИХ ЗАМОВЛЕНЬ
-// =====================
-async function fetchOrders() {
-  if (isFetching) return
-  isFetching = true
-
-  try {
-    console.log('🌐 Fetching new orders...')
-
-    const res = await axios.get(`https://${DOMAIN}/api/order/list/?page=1&limit=100`, {
-      headers: { 'X-Api-Key': API_KEY },
-      timeout: 60000,
-    })
-
-    const orders = res.data?.data || []
-
-    if (!orders.length) {
-      console.log('📭 No orders')
-      return
-    }
-
-    for (const order of orders) {
-      await Order.updateOne({ id: order.id }, order, { upsert: true })
-    }
-
-    console.log(`🔄 Synced: ${orders.length}`)
-  } catch (err) {
-    if (err.response) {
-      console.log('❌ API STATUS:', err.response.status)
-      console.log('❌ API DATA:', err.response.data)
-    } else {
-      console.log('❌ Error:', err.message)
-    }
-  } finally {
-    isFetching = false
-  }
+  console.log('🚀 Server fully started')
 }
 
 // =====================
@@ -223,8 +142,13 @@ app.get('/api/orders', async (req, res) => {
   }
 })
 app.get('/api/sync', async (req, res) => {
-  syncNewOrders()
-  res.json({ status: 'Sync started' })
+  try {
+    await syncNewOrders()
+    await refreshCache()
+    res.json({ status: 'Sync finished' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 app.get('/api/metrics', (req, res) => {
   res.json({
@@ -232,31 +156,5 @@ app.get('/api/metrics', (req, res) => {
     updatedAt: lastCacheUpdate,
   })
 })
-
-// =====================
-// START
-// =====================
-async function startServer() {
-  await connectDB()
-
-  await refreshCache()
-
-  // оновлюємо кеш кожні 10 хв
-  setInterval(refreshCache, 10 * 60 * 1000)
-
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`)
-  })
-
-  // 🔄 регулярне оновлення
-  setInterval(
-    () => {
-      syncNewOrders()
-    },
-    60 * 60 * 1000,
-  ) // раз на годину
-
-  console.log('🚀 Server fully started')
-}
 
 startServer()
