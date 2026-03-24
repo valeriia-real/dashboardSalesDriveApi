@@ -199,7 +199,7 @@ app.get('/api/orders', async (req, res) => {
   try {
     const { from, to } = req.query
 
-    let filtered = ordersCache
+    let query = {}
 
     if (from && to) {
       const fromDate = new Date(from)
@@ -208,15 +208,15 @@ app.get('/api/orders', async (req, res) => {
       fromDate.setHours(0, 0, 0, 0)
       toDate.setHours(23, 59, 59, 999)
 
-      filtered = ordersCache.filter(order => {
-        if (!order.orderTime) return false
-
-        const date = new Date(order.orderTime)
-        return date >= fromDate && date <= toDate
-      })
+      query.orderTime = {
+        $gte: fromDate,
+        $lte: toDate,
+      }
     }
 
-    res.json(filtered)
+    const orders = await Order.find(query).lean()
+
+    res.json(orders)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: err.message })

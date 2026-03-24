@@ -6,13 +6,8 @@ const fs = require('fs')
 // CONFIG
 // =====================
 const API_KEY = process.env.API_KEY
+const MONGO_URL = process.env.MONGO_URL
 const DOMAIN = 'geo-market.salesdrive.me'
-
-// 🔥 ліміти
-const LIMITS = {
-  perMinute: 10,
-  perHour: 100,
-}
 
 // =====================
 // MODEL
@@ -26,20 +21,28 @@ const Order = mongoose.models.Order || mongoose.model('Order', orderSchema)
 let requests = []
 
 // =====================
-// RATE LIMITER
+// CONNECT DB
+// =====================
+async function connectDB() {
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(MONGO_URL)
+    console.log('✅ SyncService Mongo connected')
+  }
+}
+
+// =====================
+// RATE LIMIT
 // =====================
 async function rateLimit() {
   const now = Date.now()
 
-  // видаляємо старі запити
   requests = requests.filter(t => now - t < 60 * 60 * 1000)
 
   const lastMinute = requests.filter(t => now - t < 60 * 1000).length
   const lastHour = requests.length
 
-  if (lastMinute >= LIMITS.perMinute || lastHour >= LIMITS.perHour) {
+  if (lastMinute >= 10 || lastHour >= 100) {
     console.log('⏳ Rate limit... waiting')
-
     await new Promise(r => setTimeout(r, 5000))
     return rateLimit()
   }
@@ -57,7 +60,7 @@ function log(message) {
 }
 
 // =====================
-// GET LAST ORDER DATE
+// GET LAST DATE
 // =====================
 async function getLastOrderDate() {
   const lastOrder = await Order.findOne().sort({ orderTime: -1 })
@@ -70,7 +73,7 @@ async function getLastOrderDate() {
 }
 
 // =====================
-// FETCH FROM API
+// FETCH
 // =====================
 async function fetchOrders(from, to) {
   await rateLimit()
@@ -94,9 +97,11 @@ async function fetchOrders(from, to) {
 }
 
 // =====================
-// SYNC NEW ORDERS
+// MAIN SYNC
 // =====================
 async function syncNewOrders() {
+  await connectDB()
+
   log('🚀 Sync started')
 
   let fromDate = await getLastOrderDate()
@@ -117,6 +122,8 @@ async function syncNewOrders() {
       log('⛔ Stop sync (error)')
       break
     }
+
+    log(`Fetched orders: ${orders.length}`)
 
     for (const order of orders) {
       await Order.updateOne({ id: order.id }, order, { upsert: true })
