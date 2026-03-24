@@ -88,10 +88,6 @@ async function startServer() {
 
   await refreshCache()
 
-  // 🔥 sync тільки після DB
-  await syncNewOrders()
-  await refreshCache()
-
   // оновлюємо кеш кожні 10 хв
   setInterval(refreshCache, 10 * 60 * 1000)
 

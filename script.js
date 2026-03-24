@@ -18,7 +18,7 @@ const EXCLUDED_STATUSES = [6, 7, 77]
 /* ---------------------- */
 async function loadOrders() {
   try {
-    const response = await fetch('/api/orders')
+    const response = await fetch('https://dashboardsalesdriveapi.onrender.com/api/orders')
     orders = await response.json()
 
     updateDashboard('last_day')
